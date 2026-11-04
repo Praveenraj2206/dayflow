@@ -227,6 +227,24 @@ def create_app(database_path=None):
     @app.post("/api/disputes/{identity}/resolve")
     def resolve(identity: str, payload: Reason, user=Depends(current_user), svc=Depends(service)):
         return svc.resolve(identity, payload.reason, user)
+    
+    @app.get("/api/notifications")
+    def list_notifications(user=Depends(current_user), svc=Depends(service)):
+        with svc.db.connect() as cx:
+            rows = cx.execute(
+                "SELECT * FROM notifications WHERE recipient_id=? ORDER BY created_at DESC",
+                (user["id"],),
+            ).fetchall()
+            return {"notifications": [dict(r) for r in rows]}
+
+    @app.post("/api/notifications/{identity}/read")
+    def mark_read(identity: str, user=Depends(current_user), svc=Depends(service)):
+        with svc.db.transaction() as cx:
+            cx.execute(
+                "UPDATE notifications SET read_at=? WHERE id=? AND recipient_id=?",
+                (now(), identity, user["id"]),
+            )
+        return {"status": "read"}
 
     @app.get("/api/audit")
     def audit_log(user=Depends(current_user), svc=Depends(service)):
@@ -331,6 +349,8 @@ def create_app(database_path=None):
         from .evals import detection_scorecard
         return detection_scorecard()
 
+
+    
     dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
     if dist.exists():
         app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")

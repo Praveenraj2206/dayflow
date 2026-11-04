@@ -111,6 +111,19 @@ CREATE TRIGGER IF NOT EXISTS dispute_no_update BEFORE UPDATE ON disputes
  BEGIN SELECT RAISE(ABORT,'Disputes are immutable; append a resolution'); END;
 CREATE TRIGGER IF NOT EXISTS dispute_no_delete BEFORE DELETE ON disputes
  BEGIN SELECT RAISE(ABORT,'Disputes are immutable'); END;
+CREATE TABLE IF NOT EXISTS notifications(
+ id TEXT PRIMARY KEY,
+ recipient_id TEXT NOT NULL REFERENCES users(id),
+ employee_id TEXT NOT NULL,
+ card_id TEXT NOT NULL,
+ proposal_id TEXT NOT NULL,
+ channel TEXT NOT NULL DEFAULT 'email',
+ subject TEXT NOT NULL,
+ body TEXT NOT NULL,
+ delivery TEXT NOT NULL DEFAULT 'pending',
+ created_at TEXT NOT NULL,
+ read_at TEXT
+);
 """
 
 

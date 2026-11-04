@@ -244,3 +244,14 @@ class Investigation(Model):
 class CriticVerdict(Model):
     safe: StrictBool
     reason: str = Field(min_length=1, max_length=1000)
+
+class Notification(Model):
+    id: str
+    employee_id: str
+    card_id: str
+    proposal_id: str
+    subject: str
+    body: str
+    sent_at: datetime
+    read_at: datetime | None = None
+    _aware = field_validator("sent_at", "read_at")(aware)

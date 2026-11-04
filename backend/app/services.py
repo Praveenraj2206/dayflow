@@ -1,5 +1,6 @@
 from __future__ import annotations
-
+import smtplib
+from email.message import EmailMessage
 from datetime import datetime, time, timedelta
 from decimal import Decimal
 from functools import lru_cache
@@ -27,6 +28,26 @@ def reviewer(user):
     if user["role"] != "reviewer":
         fail("An authorized reviewer is required", 403)
 
+def send_email(to_addr, subject, body):
+    host = os.environ.get("DAYFLOW_SMTP_HOST")
+    if not host or not to_addr:
+        return "skipped: SMTP not configured"
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = os.environ.get("DAYFLOW_SMTP_FROM", "dayflow@localhost")
+    msg["To"] = to_addr
+    msg.set_content(body)
+    try:
+        port = int(os.environ.get("DAYFLOW_SMTP_PORT", "587"))
+        with smtplib.SMTP(host, port, timeout=15) as smtp:
+            smtp.starttls()
+            user = os.environ.get("DAYFLOW_SMTP_USER")
+            if user:
+                smtp.login(user, os.environ["DAYFLOW_SMTP_PASSWORD"])
+            smtp.send_message(msg)
+        return "sent"
+    except Exception as exc:
+        return f"failed: {type(exc).__name__}"
 
 @lru_cache(maxsize=512)
 def cached_pay(payload, policy):
@@ -46,14 +67,23 @@ class Service:
             if cx.execute("SELECT 1 FROM meta WHERE key='seed_version'").fetchone():
                 return
             password = os.environ.get("DAYFLOW_DEMO_PASSWORD", "Dayflow-demo-2026!")
+
+            employee_override = os.environ.get("DAYFLOW_TEST_EMPLOYEE_EMAIL")
+            manager_override = os.environ.get("DAYFLOW_TEST_MANAGER_EMAIL")
+
             users = [
                 ("avery", "avery@dayflow.demo", "Avery Quinn", "reviewer", None),
-                ("taylor", "taylor@dayflow.demo", "Taylor Reed", "reviewer", None),
+                ("taylor", manager_override or "taylor@dayflow.demo", "Taylor Reed", "reviewer", None),
             ]
             cards, _, _ = generate()
+            first_employee = True
             for card in cards[::2]:
                 e = card.employee
-                users.append((e.id, f"{e.id}@dayflow.demo", e.name, "employee", e.id))
+                email = f"{e.id}@dayflow.demo"
+                if first_employee and employee_override:
+                    email = employee_override  # the first employee becomes your test login
+                    first_employee = False
+                users.append((e.id, email, e.name, "employee", e.id))
             for identity, email, name, role, employee_id in users:
                 salt = secrets.token_hex(16)
                 cx.execute("INSERT INTO users VALUES(?,?,?,?,?,?,?)", (
@@ -511,17 +541,80 @@ class Service:
                 old_revision = current.revision - 1
                 digest = fingerprint(current)
                 cx.execute("INSERT INTO write_permits VALUES(?,?,?,?)",
-                           (current.id, old_revision, digest, approval_id))
+                        (current.id, old_revision, digest, approval_id))
                 cx.execute("UPDATE cards SET revision=?,payload=?,content_hash=? WHERE id=?",
-                           (current.revision, canonical(current), digest, current.id))
+                        (current.revision, canonical(current), digest, current.id))
                 cx.execute("DELETE FROM write_permits WHERE card_id=?", (current.id,))
             cx.execute("UPDATE proposals SET state='committed' WHERE id=?", (proposal_id,))
+            notification_ids = self.notify_on_approval(cx, card, proposal_id, proof)
             audit(cx, user["id"], "verified_correction_committed", proposal_id, {
                 "approval_id": approval_id, "proof_hash": proof["hash"],
                 "periods": [c.id for c in changed],
             })
-            return {"status": "committed", "approval_id": approval_id, "idempotent": False}
+            result = {"status": "committed", "approval_id": approval_id, "idempotent": False}
+        self.dispatch_notifications(notification_ids)
+        return result
+    
+    def build_notification(self, card, proof, proposal_id):
+        """Build the email subject and body from verified proof data."""
+        employee = card.employee
+        period = f"{card.period_start} to {card.period_end}"
+        periods = proof.get("periods", [])
+        delta_text = "see details"
+        if periods and periods[0].get("delta") is not None:
+            delta_text = f"${periods[0]['delta']}"
+        subject = f"Pay correction approved - {card.period_start}"
+        body = "\n".join([
+            f"Hello {employee.name},",
+            "",
+            f"A correction to your timecard for {period} has been reviewed and approved.",
+            "",
+            "Summary:",
+            f"- Pay change: {delta_text}",
+            f"- Timecards updated: {len(periods)}",
+            f"- Reference: {proposal_id}",
+            "",
+            "Log in to Dayflow to view the details or dispute this change.",
+            "",
+            "--",
+            "Dayflow automated notification",
+        ])
+        return subject, body
 
+    def notify_on_approval(self, cx, card, proposal_id, proof):
+        """Queue one notification row for the employee and each reviewer. Runs inside the transaction."""
+        employee = cx.execute(
+            "SELECT id FROM users WHERE employee_id=?", (card.employee.id,)
+        ).fetchone()
+        if not employee:
+            return []
+        reviewers = cx.execute("SELECT id FROM users WHERE role='reviewer'").fetchall()
+        subject, body = self.build_notification(card, proof, proposal_id)
+        recipients = [employee["id"]] + [r["id"] for r in reviewers]
+        ids = []
+        for user_id in recipients:
+            nid = uid("ntf-")
+            cx.execute(
+                "INSERT INTO notifications(id,recipient_id,employee_id,card_id,proposal_id,"
+                "subject,body,delivery,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                (nid, user_id, card.employee.id, card.id, proposal_id,
+                subject, body, "pending", now()),
+            )
+            ids.append(nid)
+        audit(cx, "system", "notifications_queued", proposal_id, {"count": len(ids)})
+        return ids
+
+    def dispatch_notifications(self, ids):
+        """Send emails after the DB commit, so SMTP never holds the database lock."""
+        with self.db.connect() as cx:
+            for nid in ids:
+                row = cx.execute(
+                    "SELECT n.id, n.subject, n.body, u.email FROM notifications n "
+                    "JOIN users u ON u.id=n.recipient_id WHERE n.id=?", (nid,)
+                ).fetchone()
+                status = send_email(row["email"], row["subject"], row["body"])
+                cx.execute("UPDATE notifications SET delivery=? WHERE id=?", (status, nid))
+    
     def reject(self, proposal_id, reason, user):
         reviewer(user)
         with self.db.transaction() as cx:

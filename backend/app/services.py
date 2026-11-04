@@ -90,14 +90,22 @@ class Service:
             row = cx.execute("SELECT value FROM meta WHERE key='llm_enabled'").fetchone()
         return not row or row["value"] == "1"
 
-    def set_llm(self, enabled, user):
+    def llm_model(self):
+        with self.db.connect() as cx:
+            row = cx.execute("SELECT value FROM meta WHERE key='llm_model'").fetchone()
+        return row["value"] if row else None
+
+    def set_llm(self, enabled, user, model=None):
         reviewer(user)
         with self.db.transaction() as cx:
             cx.execute("INSERT INTO meta VALUES('llm_enabled',?) "
                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                        ("1" if enabled else "0",))
-            audit(cx, user["id"], "llm_toggled", "llm", {"enabled": enabled})
-        return {"enabled": enabled}
+            if model:
+                cx.execute("INSERT INTO meta VALUES('llm_model',?) "
+                           "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (model,))
+            audit(cx, user["id"], "llm_toggled", "llm", {"enabled": enabled, "model": model})
+        return {"enabled": enabled, "model": model or self.llm_model()}
 
     def all_cards(self, cx, employee_id=None):
         if employee_id:

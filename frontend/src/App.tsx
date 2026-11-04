@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, LogOut, Search, X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { ArrowRight, BookCheck, Gauge, LayoutDashboard, ListChecks, LogOut, ScrollText, Search, Wallet, X } from "lucide-react";
 import { api, setSession, type CardRow, type Detail, type PolicyResponse, type User } from "./api";
 import Workspace from "./Workspace";
 import { AuditLedger, EvalScorecard, PolicyStudio } from "./Governance";
+import Overview from "./Overview";
+import { Skeleton } from "./motion";
 
 export type Run = (action: () => Promise<unknown>, message: string) => Promise<void>;
 export const currency = (value: string | null) => value === null ? "Not yet calculable" :
@@ -73,10 +76,11 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
 }
 
 const titles: Record<string, string> = {
-  desk: "Exception desk", pay: "Pay explorer", policy: "Policy studio",
+  overview: "Overview", desk: "Exception desk", pay: "Pay explorer", policy: "Policy studio",
   audit: "Audit ledger", evals: "Eval scorecard",
 };
 const subtitles: Record<string, string> = {
+  overview: "",
   desk: "Timecards with detected exceptions, ordered for review. Corrections are proposed, recomputed and approved here.",
   pay: "Gross pay per period, line by line, with the clause and source record behind each amount.",
   policy: "The signed ruleset the engine runs on. Each parameter links back to its source clause.",
@@ -103,7 +107,7 @@ export default function App() {
   useEffect(() => { window.scrollTo(0, 0); }, [page, user]);
   useEffect(() => {
     api<User>("/me").then(result => {
-      setSession(result); setUser(result); setPage(result.role === "employee" ? "pay" : "desk");
+      setSession(result); setUser(result); setPage(result.role === "employee" ? "pay" : "overview");
     })
       .catch(err => {
         if (err.message !== "Sign in to continue") setNotice({ text: err.message, error: true });
@@ -130,6 +134,11 @@ export default function App() {
       .catch(err => { if (active) setNotice({ text: err.message, error: true }); });
     return () => { active = false; };
   }, [user, selected, refresh]);
+  useEffect(() => {
+    if (!notice || notice.error) return;
+    const timer = window.setTimeout(() => setNotice(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const run: Run = useCallback(async (action, message) => {
     setBusy(true); setNotice(null);
     try { await action(); setRefresh(value => value + 1); setNotice({ text: message, error: false }); }
@@ -138,7 +147,7 @@ export default function App() {
   }, []);
   if (initializing) return <div className="loading-screen"><Mark />Opening your workspace…</div>;
   if (!user) return <Login onLogin={result => {
-    setUser(result); setPage(result.role === "employee" ? "pay" : "desk"); setSelected("");
+    setUser(result); setPage(result.role === "employee" ? "pay" : "overview"); setSelected("");
   }} />;
   const attention = cards.filter(c => c.exceptions.length > 0).length;
   const exceptions = cards.reduce((sum, c) => sum + c.exceptions.length, 0);
@@ -149,8 +158,13 @@ export default function App() {
     (page === "pay" || filter === "all" || (filter === "attention" && c.exceptions.length > 0) ||
       (filter === "blocked" && c.pay_status === "incomplete") ||
       (filter === "verified" && c.workflow === "verified") || (filter === "committed" && c.workflow === "committed")));
+  const icons: Record<string, React.ReactNode> = {
+    overview: <LayoutDashboard size={16} />, desk: <ListChecks size={16} />, pay: <Wallet size={16} />,
+    policy: <BookCheck size={16} />, audit: <ScrollText size={16} />, evals: <Gauge size={16} />,
+  };
+  const go = (target: string, cardId?: string) => { setPage(target); if (cardId) setSelected(cardId); };
   const nav: [string, string][] = [
-    ...(user.role === "reviewer" ? [["desk", "Exception desk"]] as [string, string][] : []),
+    ...(user.role === "reviewer" ? [["overview", "Overview"], ["desk", "Exception desk"]] as [string, string][] : []),
     ["pay", "Pay explorer"], ["policy", "Policy studio"],
     ...(user.role === "reviewer" ? [["audit", "Audit ledger"], ["evals", "Eval scorecard"]] as [string, string][] : []),
   ];
@@ -160,7 +174,8 @@ export default function App() {
       <div className="wordmark"><Mark />Dayflow</div>
       <div className="org">Dayflow Collective<small>Synthetic data · 2 pay periods</small></div>
       <nav aria-label="Primary">{nav.map(([key, title]) => <button key={key} aria-label={title} className={page === key ? "active" : ""} onClick={() => setPage(key)}>
-        <span>{title}</span>{key === "desk" && <span aria-hidden="true" className="nav-count">{attention}</span>}
+        {page === key && <motion.i layoutId="nav-pill" className="nav-pill" transition={{ type: "spring", stiffness: 500, damping: 38 }} />}
+        <span className="nav-icon">{icons[key]}</span><span>{title}</span>{key === "desk" && <span aria-hidden="true" className="nav-count">{attention}</span>}
       </button>)}</nav>
       <div className="sidebar-bottom">
         <dl className="system-facts">
@@ -177,7 +192,7 @@ export default function App() {
       </div>
     </aside>
     <main className={`main ${busy ? "busy" : ""}`} aria-busy={busy}>
-      <section className="band">
+      {page !== "overview" && <section className="band">
         <div className="band-head">
           <div><h1>{titles[page]}</h1><p>{subtitles[page]}</p></div>
           <div className={`ruleset-chip ${signed ? "ok" : "warn"}`}><span>{signed ? "Signed ruleset" : "Policy sign-off required"}</span>
@@ -192,13 +207,16 @@ export default function App() {
             <div className="segmented-bar">{cards.map(c => <i key={c.id} title={`${c.employee.name}: ${c.pay_status}`} className={c.pay_status === "complete" ? "filled" : ""} />)}</div>
             <small>{complete} complete · {cards.length - complete} awaiting valid records</small></div>
         </div>}
-      </section>
+      </section>}
       {!signed && page !== "policy" && <div className="policy-banner"><span>Pay is a draft computation until the ruleset is reviewed and signed. Correction commits are blocked.</span>
         <button onClick={() => setPage("policy")}>Review policy <ArrowRight size={14} /></button></div>}
       {notice && <div role={notice.error ? "alert" : "status"} className={`notice ${notice.error ? "error" : ""}`}>
         <span>{notice.text}</span>
         <button className="icon-button" aria-label="Dismiss notification" onClick={() => setNotice(null)}><X size={15} /></button></div>}
-      {(page === "desk" || page === "pay") ? <div className="workbench">
+      <AnimatePresence mode="wait"><motion.div key={page} className="page-frame" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}>
+      {page === "overview" ? <Overview cards={cards} policies={policies} signed={signed} user={user} run={run} busy={busy} refresh={refresh} go={go} />
+      : (page === "desk" || page === "pay") ? <div className="workbench">
         <section className="queue">
           <div className="queue-title"><h2>{page === "pay" ? "Pay periods" : "Resolution queue"}<span className="count">{visible.length}</span></h2></div>
           <div className="queue-tools"><label className="search"><Search size={15} /><input aria-label="Search workforce" placeholder="Name, team or card ID" value={search} onChange={e => setSearch(e.target.value)} /></label>
@@ -221,9 +239,10 @@ export default function App() {
         </section>
         {detail ? <Workspace key={`${detail.card.id}-${page}`} detail={detail} user={user} run={run}
           page={page} busy={busy} onPolicy={() => setPage("policy")} /> :
-          <section className="detail loading"><p>{selected ? "Loading evidence and derivations…" : "Choose a timecard to explore."}</p></section>}
+          <section className="detail loading">{selected ? <Skeleton lines={6} /> : <p>Choose a timecard to explore.</p>}</section>}
       </div> : page === "policy" ? <PolicyStudio data={policies} user={user} run={run} busy={busy} /> :
         page === "audit" ? <AuditLedger refresh={refresh} /> : <EvalScorecard refresh={refresh} />}
+      </motion.div></AnimatePresence>
       <footer className="app-footer"><span>Dayflow · demo build</span><span>simplified mock policy, not legal advice</span></footer>
     </main>
   </div>;

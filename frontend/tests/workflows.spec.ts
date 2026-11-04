@@ -6,6 +6,10 @@ async function login(page: Page, identity = "avery") {
   await page.getByLabel("Password", { exact: true }).fill("Dayflow-demo-2026!");
   await page.getByRole("button", { name: "Enter workspace" }).click();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  if (identity !== "e001" && !identity.startsWith("e0")) {
+    await expect(page.getByRole("heading", { name: /proven/ })).toBeVisible();
+    await page.getByRole("button", { name: "Exception desk", exact: true }).click();
+  }
   await expect(page.locator(".queue-table tbody tr").first()).toBeVisible();
 }
 
@@ -71,6 +75,7 @@ test("signed policy → employee confirmation → independent approval → durab
   await expect(page.getByText("Committed by taylor", { exact: false })).toBeVisible();
   await expect(page.getByText("Revision 2", { exact: true })).toBeVisible();
   await page.reload();
+  await page.getByRole("button", { name: "Exception desk", exact: true }).click();
   await maya(page);
   await page.getByRole("button", { name: "Pay derivation", exact: true }).click();
   await expect(page.locator(".pay-total h2")).not.toHaveText("Not yet calculable");

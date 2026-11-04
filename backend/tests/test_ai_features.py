@@ -19,7 +19,10 @@ class Fake:
         self.answers = list(answers)
 
     def extract(self, schema, instruction, evidence, validate=None):
-        answer = self.answers.pop(0)
+        if isinstance(self.answers[0], dict):  # per-clause answers for the compiler
+            answer = self.answers[0].get(evidence.get("clause_id"), schema(claims=[]))
+        else:
+            answer = self.answers.pop(0)
         if isinstance(answer, Exception):
             raise answer
         return validate(answer) if validate else answer
@@ -60,10 +63,10 @@ def test_compiler_accepts_verbatim_quote_and_flags_ambiguous():
     daily = "the first 480 worked minutes are straight time"
     weekly = "Minutes in that pool exceeding 2,400 become weekly overtime"
     assert daily in text and weekly in text
-    fake = Fake(ai.ExtractedRules(claims=[
-        claim("daily_minutes", 480, "DF-004", daily),
+    fake = Fake({"DF-004": ai.ExtractedRules(claims=[
+        claim("daily_minutes", "480 minutes", "DF-004", daily),
         claim("weekly_minutes", 2400, "DF-004", weekly, ambiguous=True),
-    ]))
+    ])})
     result = ai.draft_from_prose(fake, None, "draft-x")
     by = {p["field"]: p for p in result["provenance"]}
     assert by["daily_minutes"]["source"] == "model" and not by["daily_minutes"]["needs_human"]
@@ -85,7 +88,12 @@ def test_compiler_rejects_invented_quote_or_value():
 
 
 def test_compiler_provider_failure_routes_to_manual_review():
-    result = ai.draft_from_prose(Fake(ProviderFailure("bad")), None, "draft-fail")
+    result = ai.draft_from_prose(Fake({}), None, "draft-fail")
+    assert result["status"] == "extracted"
+    assert all(p["needs_human"] for p in result["provenance"])
+    failing = Fake({})
+    failing.extract = lambda *a, **k: (_ for _ in ()).throw(ProviderFailure("bad"))
+    result = ai.draft_from_prose(failing, None, "draft-fail-2")
     assert result["status"] == "manual_review"
     assert Rules.model_validate(result["document"]["rules"])
 
@@ -95,7 +103,7 @@ def test_explainer_template_when_off(service, users):
     pay = pay_for(service, users)
     result = ai.explain_paycheck(Off(), pay, "Why is my pay this amount?")
     assert result["source"] == "template" and result["status"] == "offline"
-    assert ai.numbers_in(result["text"]) <= ai.numbers_in(" ".join(ai.facts_for(pay)))
+    assert ai.numbers_in(result["text"]) <= ai.numbers_in(ai.facts_text(pay))
 
 
 def test_explainer_accepts_grounded_text(service, users):
@@ -207,7 +215,7 @@ def test_api_roles_toggle_and_off_mode(service, monkeypatch):
         login = client.post("/api/login", json={
             "email": "avery@dayflow.demo", "password": "Dayflow-demo-2026!"})
         client.headers["X-CSRF-Token"] = login.json()["csrf"]
-        assert client.post("/api/llm", json={"enabled": False}).json() == {"enabled": False}
+        assert client.post("/api/llm", json={"enabled": False}).json()["enabled"] is False
         assert client.get("/api/config").json()["llm_enabled"] is False
         draft = client.post("/api/policies/draft-from-prose", json={}).json()
         assert draft["status"] == "offline"
@@ -222,3 +230,43 @@ def test_provider_kill_switch(monkeypatch):
     assert Provider().mode == "openai"
     assert Provider(enabled=False).mode == "off"
     assert isinstance(Service, type)
+
+
+def test_ollama_mode_needs_no_key_and_reports_licence(monkeypatch):
+    monkeypatch.setenv("DAYFLOW_LLM_MODE", "ollama")
+    monkeypatch.delenv("DAYFLOW_LLM_API_KEY", raising=False)
+    monkeypatch.setenv("DAYFLOW_LLM_BASE_URL", "http://127.0.0.1:9/v1")
+    provider = Provider(model="gpt-oss:20b")
+    assert provider.mode == "ollama" and "Apache-2.0" in provider.licence
+    assert provider.status()["reachable"] is False
+    assert "verify" in Provider(model="mystery:1b").licence.lower()
+
+
+def test_compiler_reverts_contradictory_extraction():
+    text = baseline().clauses["DF-004"]
+    quote = "the first 480 worked minutes are straight time, the next\n  240 worked minutes"
+    assert " ".join(quote.split()) in " ".join(text.split())
+    fake = Fake({"DF-004": ai.ExtractedRules(claims=[
+        claim("daily_minutes", 480, "DF-004", quote),
+        claim("double_minutes", 240, "DF-004", quote),  # misread: 240 < 480 contradicts rules
+    ])})
+    result = ai.draft_from_prose(fake, None, "draft-conflict")
+    by = {p["field"]: p for p in result["provenance"]}
+    assert result["document"]["rules"]["double_minutes"] == 720
+    assert by["double_minutes"]["needs_human"] and "reverted" in by["double_minutes"]["note"]
+
+
+def test_llm_status_endpoint_reviewer_only(service, monkeypatch):
+    monkeypatch.setenv("DAYFLOW_LLM_MODE", "ollama")
+    monkeypatch.setenv("DAYFLOW_LLM_BASE_URL", "http://127.0.0.1:9/v1")
+    with TestClient(create_app(service.db.path)) as client:
+        login = client.post("/api/login", json={
+            "email": "avery@dayflow.demo", "password": "Dayflow-demo-2026!"})
+        client.headers["X-CSRF-Token"] = login.json()["csrf"]
+        status = client.get("/api/llm/status").json()
+        assert status["mode"] == "ollama" and status["reachable"] is False and status["configured"]
+        assert client.post("/api/llm", json={"enabled": True, "model": "gpt-oss:20b"}).json()["model"] == "gpt-oss:20b"
+        assert "Apache-2.0" in client.get("/api/llm/status").json()["licence"]
+        client.post("/api/logout")
+        client.post("/api/login", json={"email": "e001@dayflow.demo", "password": "Dayflow-demo-2026!"})
+        assert client.get("/api/llm/status").status_code == 403

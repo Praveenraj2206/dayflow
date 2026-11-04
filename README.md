@@ -84,8 +84,19 @@ Do not expose demo accounts on the public internet.
 
 ## AI-assisted features (all optional, all validated)
 
-With `DAYFLOW_LLM_MODE=openai` (any OpenAI-compatible endpoint, including a local
-Ollama via `DAYFLOW_LLM_BASE_URL`) a reviewer can switch AI on or off at runtime from
+**Open-weight models (recommended).** Run locally with Ollama; no key, no data leaves the machine:
+
+```bash
+ollama pull gpt-oss:20b          # Apache-2.0 + gpt-oss usage policy (or: ollama pull qwen3:8b, Apache-2.0)
+export DAYFLOW_LLM_MODE=ollama DAYFLOW_LLM_MODEL=gpt-oss:20b
+```
+
+The Overview page shows the installed models, reachability and licence hint. **Verify the
+selected model's licence and acceptable-use terms before use**; the in-app hint is not legal
+review. The compiler, explainer and investigator were exercised live against `qwen3:8b`.
+Use `DAYFLOW_LLM_MODE=openai` for any hosted OpenAI-compatible endpoint.
+
+With AI configured a reviewer can switch AI on or off at runtime from
 the sidebar; off behaves exactly like mode `off` and is audited.
 
 | Feature | Where | Guardrail |

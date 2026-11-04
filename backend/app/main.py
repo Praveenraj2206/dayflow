@@ -50,6 +50,7 @@ class Approval(Model):
 
 class LlmToggle(Model):
     enabled: StrictBool
+    model: str | None = Field(default=None, max_length=100, pattern=r"^[a-zA-Z0-9._:/-]+$")
 
 
 class ProseInput(Model):
@@ -115,7 +116,7 @@ def create_app(database_path=None):
         return request.app.state.service
 
     def provider_for(svc):
-        return Provider(enabled=svc.llm_enabled())
+        return Provider(enabled=svc.llm_enabled(), model=svc.llm_model())
 
     def current_user(request: Request, svc=Depends(service)):
         token = request.cookies.get("dayflow_session", "")
@@ -253,14 +254,21 @@ def create_app(database_path=None):
     @app.get("/api/config")
     def config(user=Depends(current_user), svc=Depends(service)):
         provider = provider_for(svc)
-        return {"llm_mode": provider.mode, "llm_enabled": svc.llm_enabled(),
+        return {"llm_mode": provider.mode, "licence": provider.licence, "llm_enabled": svc.llm_enabled(),
                 "llm_configured": Provider().mode != "off", "model": provider.model if provider.mode != "off" else None,
                 "disclaimer": DISCLAIMER, "dataset": "Synthetic / seed 42",
                 "verifier": "dayflow-full-period-v1"}
 
+    @app.get("/api/llm/status")
+    def llm_status(user=Depends(current_user), svc=Depends(service)):
+        reviewer(user)
+        base = Provider(enabled=True, model=svc.llm_model())
+        return {**base.status(), "enabled": svc.llm_enabled(),
+                "configured": base.mode != "off"}
+
     @app.post("/api/llm")
     def toggle_llm(payload: LlmToggle, user=Depends(current_user), svc=Depends(service)):
-        return svc.set_llm(payload.enabled, user)
+        return svc.set_llm(payload.enabled, user, payload.model)
 
     @app.post("/api/policies/draft-from-prose")
     def draft_policy(payload: ProseInput, user=Depends(current_user), svc=Depends(service)):

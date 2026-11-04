@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  ArrowUpRight, ChevronRight, Command, FileCheck2, FlaskConical, Layers3,
-  LogOut, PanelLeftClose, Search, ShieldCheck, Sparkles, Wallet, X,
-} from "lucide-react";
+import { ArrowRight, LogOut, Search, X } from "lucide-react";
 import { api, setSession, type CardRow, type Detail, type PolicyResponse, type User } from "./api";
 import Workspace from "./Workspace";
 import { AuditLedger, EvalScorecard, PolicyStudio } from "./Governance";
@@ -20,26 +17,36 @@ export const period = (start: string) => {
 export const initials = (name: string) => name.split(" ").map(w => w[0]).slice(0, 2).join("");
 export const friendly = (value: string) => value.replaceAll("_", " ");
 
+export function Mark({ size = 22 }: { size?: number }) {
+  return <svg className="mark" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="2" y="4" width="20" height="3" rx="1" fill="currentColor" opacity=".35" />
+    <rect x="2" y="10.5" width="14" height="3" rx="1" fill="currentColor" opacity=".65" />
+    <rect x="2" y="17" width="8" height="3" rx="1" fill="currentColor" />
+    <circle cx="19" cy="18.5" r="2.5" fill="#6fb1f0" />
+  </svg>;
+}
+
 function Login({ onLogin }: { onLogin: (user: User) => void }) {
   const [email, setEmail] = useState("avery@dayflow.demo");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   return <main className="login">
-    <section className="login-story">
-      <div className="brand"><span className="brand-mark"><Layers3 size={25} /></span>dayflow<span className="brand-dot">.</span></div>
-      <div className="login-copy"><span className="eyebrow light">WORKFORCE INTELLIGENCE, WITH RECEIPTS</span>
-        <h1>Every hour matters.<br /><em>Make it make sense.</em></h1>
-        <p>Turn timecard exceptions into clear, verified decisions.<br />A little less uncertainty. A lot more trust.</p>
-        <div className="trust-path"><span>Evidence</span><ChevronRight size={16} /><span>Verification</span>
-          <ChevronRight size={16} /><span>Human approval</span></div>
+    <section className="login-panel">
+      <div className="wordmark light"><Mark size={26} />Dayflow</div>
+      <div className="login-intro">
+        <h1>Timecard exceptions, resolved with a proof attached.</h1>
+        <ol className="login-steps">
+          <li><b>01</b><div><strong>Detect</strong><span>Deterministic rules flag missed punches, overtime risk, schedule conflicts and policy breaches.</span></div></li>
+          <li><b>02</b><div><strong>Verify</strong><span>The pay engine recomputes every proposed correction across the full period.</span></div></li>
+          <li><b>03</b><div><strong>Approve</strong><span>A second reviewer commits. Each step lands in a hash-chained ledger.</span></div></li>
+        </ol>
       </div>
-      <div className="login-foot"><ShieldCheck size={18} /> Synthetic workforce. Real verification boundaries.</div>
-      <div className="orb one" /><div className="orb two" />
+      <p className="login-fine">Synthetic workforce of 30 people across two pay periods. The model never calculates pay or writes records.</p>
     </section>
     <section className="login-form">
-      <span className="eyebrow">YOUR WORKDAY, RECONCILED</span>
-      <h2>Welcome to Dayflow</h2><p className="muted">Sign in to your workforce workspace.</p>
+      <h2>Welcome to Dayflow</h2>
+      <p className="muted">Sign in with a demo account.</p>
       <form onSubmit={async e => {
         e.preventDefault(); setBusy(true); setError("");
         try { const user = await api<User>("/login", "POST", { email, password }); setSession(user); onLogin(user); }
@@ -49,21 +56,33 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
         <label>Work email<input type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required /></label>
         <label>Password<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required /></label>
         {error && <div role="alert" className="error-box">{error}</div>}
-        <button className="button primary wide" disabled={busy}>{busy ? "Signing in…" : "Enter workspace"}<ArrowUpRight size={17} /></button>
+        <button className="button primary wide" disabled={busy}>{busy ? "Signing in…" : "Enter workspace"}</button>
       </form>
-      <div className="demo-access"><span className="eyebrow">LOCAL DEMO IDENTITIES</span>
-        <p>Separate authenticated accounts—not a role toggle.</p>
+      <div className="demo-access">
+        <span className="label">Demo accounts</span>
         <div className="demo-buttons">{[
           ["avery", "Avery · reviewer"], ["taylor", "Taylor · independent approver"], ["e001", "Maya · employee"],
-        ].map(([id, label]) => <button key={id} onClick={() => {
+        ].map(([id, label]) => <button type="button" key={id} onClick={() => {
           setEmail(`${id}@dayflow.demo`); setPassword("Dayflow-demo-2026!");
-        }}>{label}<ChevronRight size={13} /></button>)}</div>
-        <small>Demo password: <code>Dayflow-demo-2026!</code>. Local synthetic demonstration only; not production authentication.</small>
+        }}>{label}</button>)}</div>
+        <small>Each is a separate account. Password <code>Dayflow-demo-2026!</code> · local demo only.</small>
       </div>
       <footer>simplified mock policy, not legal advice</footer>
     </section>
   </main>;
 }
+
+const titles: Record<string, string> = {
+  desk: "Exception desk", pay: "Pay explorer", policy: "Policy studio",
+  audit: "Audit ledger", evals: "Eval scorecard",
+};
+const subtitles: Record<string, string> = {
+  desk: "Timecards with detected exceptions, ordered for review. Corrections are proposed, recomputed and approved here.",
+  pay: "Gross pay per period, line by line, with the clause and source record behind each amount.",
+  policy: "The signed ruleset the engine runs on. Each parameter links back to its source clause.",
+  audit: "Append-only record of sign-offs, proposals, verifications and commits.",
+  evals: "Detection accuracy and release gates measured against independently labelled synthetic data.",
+};
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -116,98 +135,92 @@ export default function App() {
     catch (err) { setNotice({ text: err instanceof Error ? err.message : "The operation failed", error: true }); }
     finally { setBusy(false); }
   }, []);
-  if (initializing) return <div className="loading-screen"><Layers3 />Opening your workspace…</div>;
+  if (initializing) return <div className="loading-screen"><Mark />Opening your workspace…</div>;
   if (!user) return <Login onLogin={result => {
     setUser(result); setPage(result.role === "employee" ? "pay" : "desk"); setSelected("");
   }} />;
   const attention = cards.filter(c => c.exceptions.length > 0).length;
   const exceptions = cards.reduce((sum, c) => sum + c.exceptions.length, 0);
   const complete = cards.filter(c => c.pay_status === "complete").length;
+  const committed = cards.filter(c => c.workflow === "committed").length;
   const visible = cards.filter(c =>
     `${c.employee.name} ${c.employee.department} ${c.id}`.toLowerCase().includes(search.toLowerCase()) &&
     (page === "pay" || filter === "all" || (filter === "attention" && c.exceptions.length > 0) ||
       (filter === "blocked" && c.pay_status === "incomplete") ||
       (filter === "verified" && c.workflow === "verified") || (filter === "committed" && c.workflow === "committed")));
-  const nav = [
-    ...(user.role === "reviewer" ? [["desk", "Exception desk", FileCheck2]] as const : []),
-    ["pay", "Pay explorer", Wallet], ["policy", "Policy studio", Layers3],
-    ...(user.role === "reviewer" ? [["audit", "Audit ledger", ShieldCheck], ["evals", "Eval scorecard", FlaskConical]] as const : []),
-  ] as const;
-  const titles: Record<string, string> = {
-    desk: "Exception desk", pay: "Pay explorer", policy: "Policy studio",
-    audit: "Audit ledger", evals: "Eval scorecard",
-  };
+  const nav: [string, string][] = [
+    ...(user.role === "reviewer" ? [["desk", "Exception desk"]] as [string, string][] : []),
+    ["pay", "Pay explorer"], ["policy", "Policy studio"],
+    ...(user.role === "reviewer" ? [["audit", "Audit ledger"], ["evals", "Eval scorecard"]] as [string, string][] : []),
+  ];
+  const activeVersion = policies?.versions.find(p => p.id === policies.active_id)?.version;
   return <div className="shell">
     <aside className="sidebar">
-      <a className="brand" href="#" onClick={e => e.preventDefault()} aria-label="Dayflow"><span className="brand-mark"><Layers3 size={22} /></span>dayflow<span className="brand-dot">.</span></a>
-      <div className="workspace-label"><span className="workspace-icon">D</span><div>Dayflow Collective<small>Synthetic workspace</small></div><PanelLeftClose size={14} /></div>
-      <span className="nav-heading">WORKSPACE</span>
-      <nav>{nav.map(([key, title, Icon]) => <button key={key} aria-label={title} className={page === key ? "active" : ""} onClick={() => setPage(key)}>
-        <Icon size={18} /><span>{title}</span>{key === "desk" && <span aria-hidden="true" className="nav-count">{attention}</span>}
+      <div className="wordmark"><Mark />Dayflow</div>
+      <div className="org">Dayflow Collective<small>Synthetic data · 2 pay periods</small></div>
+      <nav aria-label="Primary">{nav.map(([key, title]) => <button key={key} aria-label={title} className={page === key ? "active" : ""} onClick={() => setPage(key)}>
+        <span>{title}</span>{key === "desk" && <span aria-hidden="true" className="nav-count">{attention}</span>}
       </button>)}</nav>
       <div className="sidebar-bottom">
-        <div className="harness-label"><span className={`status-dot ${mode !== "off" ? "online" : ""}`} /><span>{mode === "off" ? "Deterministic mode" : "AI assistance enabled"}</span><ShieldCheck size={14} /></div>
+        <dl className="system-facts">
+          <div><dt>Engine</dt><dd>{mode === "off" ? "Deterministic mode" : "AI assistance enabled"}</dd></div>
+          <div><dt>Ruleset</dt><dd className={signed ? "" : "warn"}>{activeVersion || "unsigned"}</dd></div>
+        </dl>
         <div className="profile"><span className="avatar">{initials(user.name)}</span><div>{user.name}<small>{friendly(user.role)}</small></div>
           <button className="icon-button" aria-label="Sign out" onClick={() => run(async () => {
             await api("/logout", "POST"); setSession(null); setUser(null); setCards([]); setDetail(null);
-          }, "Signed out")}><LogOut size={17} /></button></div>
+          }, "Signed out")}><LogOut size={16} /></button></div>
       </div>
     </aside>
     <main className={`main ${busy ? "busy" : ""}`} aria-busy={busy}>
-      <header className="topbar"><div>Workspace <ChevronRight size={13} /><strong>{titles[page]}</strong></div>
-        <div><span className="environment-tag">DEMO ENVIRONMENT</span><span className="topbar-divider" /><Command size={15} /><span className="muted">Evidence over assumptions</span></div>
-      </header>
-      <div className="page-heading"><div><span className="eyebrow">CLARITY FROM CLOCK-IN TO PAYCHECK</span>
-        <h1>{page === "desk" ? "A clearer path to payday." : titles[page]}</h1>
-        <p>{page === "desk" ? "Investigate the exception. Verify the correction. Keep people in control." :
-          page === "pay" ? "Every earnings line, its source, and the rule behind it. Nothing hidden in a total." :
-          page === "policy" ? "Policy you can inspect, version, and put your name behind." :
-          page === "audit" ? "A durable record of who decided what—and the evidence that made it possible." :
-          "Measured behavior, transparent denominators, and no borrowed confidence."}</p></div>
-        <div className="policy-indicator"><ShieldCheck size={19} /><div>{signed ? "Signed ruleset" : "Policy sign-off required"}<small>{policies?.versions.find(p => p.id === policies.active_id)?.version || "Unsigned baseline preview"}</small></div></div>
-      </div>
-      {!signed && page !== "policy" && <div className="policy-banner"><ShieldCheck size={17} /><span>Pay is a draft computation until the ruleset is reviewed and signed. Correction commits are blocked.</span>
-        <button onClick={() => setPage("policy")}>Review policy <ArrowUpRight size={15} /></button></div>}
-      {notice && <div role={notice.error ? "alert" : "status"} className={`notice ${notice.error ? "error" : ""}`}>
-        {notice.error ? <X size={17} /> : <ShieldCheck size={17} />}<span>{notice.text}</span>
-        <button className="icon-button" aria-label="Dismiss notification" onClick={() => setNotice(null)}><X size={16} /></button></div>}
-      {(page === "desk" || page === "pay") ? <>
-        <section className="signal-strip" aria-label="Workforce summary">
-          <div><span className="signal-label">IN THIS WORKSPACE</span><strong>{cards.length}<small>timecards</small></strong></div>
-          <div><span className="signal-label">NEEDS A CLOSER LOOK</span><strong>{attention}<small>with exceptions</small></strong></div>
-          <div><span className="signal-label">EVIDENCE TO RESOLVE</span><strong>{exceptions}<small>detected exceptions</small></strong></div>
-          <div className="signal-visual"><span className="signal-label">CALCULATION COMPLETENESS</span>
-            <div className="segmented-bar">{cards.map(c => <i key={c.id} title={`${c.employee.name}: ${c.pay_status}`} className={c.pay_status === "complete" ? "filled" : ""} />)}</div>
-            <span className="muted">{complete} complete · {cards.length - complete} awaiting valid records</span></div>
-        </section>
-        <div className="workbench">
-          <section className="queue">
-            <div className="queue-title"><div><span className="eyebrow">{page === "pay" ? "PEOPLE & PERIODS" : "EXCEPTION INBOX"}</span><h2>{page === "pay" ? "Pay periods" : "Resolution queue"}<span>{visible.length}</span></h2></div><span className="live-label"><span className="status-dot online" />Engine computed</span></div>
-            <div className="queue-tools"><label className="search"><Search size={16} /><input aria-label="Search workforce" placeholder="Find a person or team…" value={search} onChange={e => setSearch(e.target.value)} /></label>
-              {page === "desk" && <select aria-label="Filter timecards" value={filter} onChange={e => setFilter(e.target.value)}>
-                <option value="attention">Needs attention</option><option value="blocked">Incomplete records</option>
-                <option value="verified">Verified</option><option value="committed">Committed</option><option value="all">All timecards</option>
-              </select>}</div>
-            <div className="queue-table-wrap"><table className="queue-table"><thead><tr><th>EMPLOYEE / PERIOD</th><th>STATUS</th><th className="numeric">GROSS PAY</th></tr></thead>
-              <tbody>{visible.map(c => <tr key={c.id} className={selected === c.id ? "selected" : ""}>
-                <td><button className="person-cell" onClick={() => setSelected(c.id)} aria-label={`Open ${c.employee.name} ${c.period_start}`}>
-                  <span className={`avatar hue-${Number(c.employee.id.slice(1)) % 4}`}>{initials(c.employee.name)}</span>
-                  <span><strong>{c.employee.name}</strong><small>{period(c.period_start)}</small><span className="row-team">{c.employee.department}</span></span></button></td>
-                <td><span className={`badge ${c.workflow === "committed" ? "green" : c.pay_status === "incomplete" ? "red" : c.exceptions.length ? "amber" : "neutral"}`}>
-                  {c.workflow === "committed" ? "Committed" : c.pay_status === "incomplete" ? "Incomplete" : c.exceptions.length ? `${c.exceptions.length} exceptions` : "Clear"}</span>
-                  {c.workflow === "verified" && <small className="verified-note">Verified · approval pending</small>}</td>
-                <td className="numeric">{c.total === null ? <span className="unknown">Awaiting records</span> : <strong>{currency(c.total)}</strong>}<small>{duration(c.work_minutes)} recorded</small></td>
-              </tr>)}</tbody></table>
-              {!visible.length && <div className="empty"><FileCheck2 /><h3>No matching timecards</h3><p>Change the filter or search to explore the workspace.</p></div>}
-            </div><div className="queue-footer"><ShieldCheck size={13} /> No model-generated pay. No automatic commits.</div>
-          </section>
-          {detail ? <Workspace key={`${detail.card.id}-${page}`} detail={detail} user={user} run={run}
-            page={page} busy={busy} onPolicy={() => setPage("policy")} /> :
-            <section className="detail loading"><Sparkles size={22} /><p>{selected ? "Loading evidence and derivations…" : "Choose a timecard to explore."}</p></section>}
+      <section className="band">
+        <div className="band-head">
+          <div><h1>{titles[page]}</h1><p>{subtitles[page]}</p></div>
+          <div className={`ruleset-chip ${signed ? "ok" : "warn"}`}><span>{signed ? "Signed ruleset" : "Policy sign-off required"}</span>
+            <small>{activeVersion || "Unsigned baseline preview"}</small></div>
         </div>
-      </> : page === "policy" ? <PolicyStudio data={policies} user={user} run={run} busy={busy} /> :
+        {(page === "desk" || page === "pay") && <div className="band-metrics" aria-label="Workforce summary">
+          <div><span>Timecards</span><strong>{cards.length}</strong></div>
+          <div><span>With exceptions</span><strong>{attention}</strong></div>
+          <div><span>Open exceptions</span><strong>{exceptions}</strong></div>
+          <div><span>Committed</span><strong>{committed}</strong></div>
+          <div className="band-coverage"><span>Calculable gross pay</span>
+            <div className="segmented-bar">{cards.map(c => <i key={c.id} title={`${c.employee.name}: ${c.pay_status}`} className={c.pay_status === "complete" ? "filled" : ""} />)}</div>
+            <small>{complete} complete · {cards.length - complete} awaiting valid records</small></div>
+        </div>}
+      </section>
+      {!signed && page !== "policy" && <div className="policy-banner"><span>Pay is a draft computation until the ruleset is reviewed and signed. Correction commits are blocked.</span>
+        <button onClick={() => setPage("policy")}>Review policy <ArrowRight size={14} /></button></div>}
+      {notice && <div role={notice.error ? "alert" : "status"} className={`notice ${notice.error ? "error" : ""}`}>
+        <span>{notice.text}</span>
+        <button className="icon-button" aria-label="Dismiss notification" onClick={() => setNotice(null)}><X size={15} /></button></div>}
+      {(page === "desk" || page === "pay") ? <div className="workbench">
+        <section className="queue">
+          <div className="queue-title"><h2>{page === "pay" ? "Pay periods" : "Resolution queue"}<span className="count">{visible.length}</span></h2></div>
+          <div className="queue-tools"><label className="search"><Search size={15} /><input aria-label="Search workforce" placeholder="Name, team or card ID" value={search} onChange={e => setSearch(e.target.value)} /></label>
+            {page === "desk" && <select aria-label="Filter timecards" value={filter} onChange={e => setFilter(e.target.value)}>
+              <option value="attention">Needs attention</option><option value="blocked">Incomplete records</option>
+              <option value="verified">Verified</option><option value="committed">Committed</option><option value="all">All timecards</option>
+            </select>}</div>
+          <div className="queue-table-wrap"><table className="queue-table"><thead><tr><th>Employee</th><th>Status</th><th className="numeric">Gross</th></tr></thead>
+            <tbody>{visible.map(c => <tr key={c.id} className={selected === c.id ? "selected" : ""}>
+              <td><button className="person-cell" onClick={() => setSelected(c.id)} aria-label={`Open ${c.employee.name} ${c.period_start}`}>
+                <span className={`avatar hue-${Number(c.employee.id.slice(1)) % 4}`}>{initials(c.employee.name)}</span>
+                <span><strong>{c.employee.name}</strong><small>{period(c.period_start)} · {c.employee.department}</small></span></button></td>
+              <td><span className={`badge ${c.workflow === "committed" ? "green" : c.pay_status === "incomplete" ? "red" : c.exceptions.length ? "amber" : "neutral"}`}>
+                {c.workflow === "committed" ? "Committed" : c.pay_status === "incomplete" ? "Incomplete" : c.exceptions.length ? `${c.exceptions.length} exceptions` : "Clear"}</span>
+                {c.workflow === "verified" && <small className="verified-note">Verified · approval pending</small>}</td>
+              <td className="numeric">{c.total === null ? <span className="unknown">Awaiting records</span> : <strong className="figure">{currency(c.total)}</strong>}<small>{duration(c.work_minutes)} recorded</small></td>
+            </tr>)}</tbody></table>
+            {!visible.length && <div className="empty"><h3>No matching timecards</h3><p>Change the filter or search term.</p></div>}
+          </div>
+        </section>
+        {detail ? <Workspace key={`${detail.card.id}-${page}`} detail={detail} user={user} run={run}
+          page={page} busy={busy} onPolicy={() => setPage("policy")} /> :
+          <section className="detail loading"><p>{selected ? "Loading evidence and derivations…" : "Choose a timecard to explore."}</p></section>}
+      </div> : page === "policy" ? <PolicyStudio data={policies} user={user} run={run} busy={busy} /> :
         page === "audit" ? <AuditLedger refresh={refresh} /> : <EvalScorecard refresh={refresh} />}
-      <footer className="app-footer"><span>dayflow <span className="footer-dot">/</span> Workforce intelligence, verified.</span><span>simplified mock policy, not legal advice</span></footer>
+      <footer className="app-footer"><span>Dayflow · demo build</span><span>simplified mock policy, not legal advice</span></footer>
     </main>
   </div>;
 }

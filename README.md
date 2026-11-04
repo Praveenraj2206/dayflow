@@ -201,6 +201,21 @@ transaction writes, unauthorized access, and direct unverified database updates.
 Browser coverage exercises distinct authenticated identities and persistence,
 not just mocked dashboard screenshots.
 
+## Interface design
+
+The UI uses one stylesheet (`frontend/src/dayflow.css`). The palette is deep
+navy, royal blue and a sky-blue accent on a white canvas. Glass is used only
+over the navy page header. Text is set in Instrument Sans, and every figure is
+set in JetBrains Mono so columns align. Each workspace has its own layout:
+
+- the exception desk is a queue with a detail pane and a scheduled-vs-recorded
+  timeline;
+- the pay explorer is a derivation ledger;
+- the policy studio shows parameters next to their source clause;
+- the audit ledger is a hash chain.
+
+The UI displays engine output only; it never computes pay.
+
 ## What is and is not new
 
 Missed-punch detection, regularization, overtime reports, scheduling alerts,

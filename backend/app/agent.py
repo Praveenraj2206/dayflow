@@ -15,6 +15,10 @@ INJECTION_PATTERNS = [
     r"(?:reveal|print|exfiltrate).*(?:secret|key|token|password)",
     r"(?:set|change).*(?:hourly\s+rate|salary|pay\s+rate)",
     r"do\s+not\s+tell\s+(?:the\s+)?(?:reviewer|manager)",
+    r"(?:disregard|forget|override)\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|above|your)\s+(?:instructions|rules|policy)",
+    r"you\s+are\s+now\s+(?:the\s+)?(?:approver|manager|admin|system)",
+    r"(?:pay|credit|add)\s+me\s+(?:for\s+)?(?:an?\s+)?(?:extra|\d+)\s+(?:hours?|overtime)",
+    r"(?:skip|bypass|disable)\s+(?:the\s+)?(?:verif\w+|check\w*|approval|critic)",
 ]
 
 
@@ -38,10 +42,12 @@ def validate_critic(result):
 
 
 class Provider:
-    def __init__(self):
+    def __init__(self, enabled=True):
         self.mode = os.environ.get("DAYFLOW_LLM_MODE", "off")
         if self.mode not in ("off", "openai"):
             raise ValueError("DAYFLOW_LLM_MODE must be off or openai")
+        if not enabled:  # Runtime kill switch: behave exactly like mode=off.
+            self.mode = "off"
         self.model = os.environ.get("DAYFLOW_LLM_MODEL", "gpt-4.1-mini")
         self.url = os.environ.get("DAYFLOW_LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
         self.key = os.environ.get("DAYFLOW_LLM_API_KEY")

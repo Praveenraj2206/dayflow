@@ -134,3 +134,21 @@ test("benign offline investigation stays useful without a model", async ({ page 
   await expect(page.getByText("No-LLM fallback", { exact: true })).toBeVisible();
   await expect(page.locator(".investigation-result")).toContainText("Deterministic");
 });
+
+test("AI wow layer degrades safely: injection lab, unsafe fix, paycheck explainer, AI draft", async ({ page }) => {
+  await login(page);
+  await maya(page);
+  await page.getByRole("button", { name: "AI investigation", exact: true }).click();
+  await page.getByRole("button", { name: "Run note through critics" }).click();
+  await expect(page.getByText("Blocked", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Pay derivation", exact: true }).click();
+  await page.getByLabel("Your question").fill("Why is my total this amount?");
+  await page.getByRole("button", { name: "Explain", exact: true }).click();
+  await expect(page.getByText("Engine derivation")).toBeVisible();
+  await page.getByRole("button", { name: /Correction & proof/ }).click();
+  await page.getByRole("button", { name: "Propose an unsafe fix" }).click();
+  await expect(page.getByText("Rejected by the verifier", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Policy studio", exact: true }).click();
+  await page.getByRole("button", { name: "Extract rules from policy text" }).click();
+  await expect(page.getByText("AI is off: baseline shown", { exact: false })).toBeVisible();
+});

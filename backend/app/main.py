@@ -11,7 +11,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import Field, StrictBool
 
+from datetime import date
+
 from .agent import Provider, investigate
+from . import ai_features
 from .db import Database, audit, now, password_hash, uid
 from .domain import Correction, DISCLAIMER, Model, PolicyDocument, canonical
 from .services import Service, fail, reviewer
@@ -43,6 +46,29 @@ class Attest(Reason):
 
 class Approval(Model):
     proof_hash: str = Field(min_length=64, max_length=64)
+
+
+class LlmToggle(Model):
+    enabled: StrictBool
+
+
+class ProseInput(Model):
+    prose: str | None = Field(default=None, max_length=60000)
+    version: str = Field(default="dayflow-ai-draft", min_length=3, max_length=100,
+                         pattern=r"^[a-zA-Z0-9._-]+$")
+
+
+class Question(Model):
+    question: str = Field(min_length=3, max_length=300)
+
+
+class ReplayInput(Model):
+    candidate_id: str = Field(max_length=100)
+    period_start: date | None = None
+
+
+class FreeText(Model):
+    text: str = Field(min_length=1, max_length=1000)
 
 
 class DisputeInput(Reason):
@@ -87,6 +113,9 @@ def create_app(database_path=None):
 
     def service(request: Request):
         return request.app.state.service
+
+    def provider_for(svc):
+        return Provider(enabled=svc.llm_enabled())
 
     def current_user(request: Request, svc=Depends(service)):
         token = request.cookies.get("dayflow_session", "")
@@ -210,7 +239,8 @@ def create_app(database_path=None):
             card = svc.card(cx, identity, user)
             policy, _ = svc.policy(cx)
         result = investigate(card, detail["pay"],
-                             PolicyDocument.model_validate_json(policy["document"]))
+                             PolicyDocument.model_validate_json(policy["document"]),
+                             provider_for(svc))
         with svc.db.transaction() as cx:
             cx.execute("INSERT INTO investigations VALUES(?,?,?,?,?)",
                        (uid("inv-"), identity, user["id"], canonical(result), now()))
@@ -221,11 +251,71 @@ def create_app(database_path=None):
         return result
 
     @app.get("/api/config")
-    def config(user=Depends(current_user)):
-        provider = Provider()
-        return {"llm_mode": provider.mode, "model": provider.model if provider.mode != "off" else None,
+    def config(user=Depends(current_user), svc=Depends(service)):
+        provider = provider_for(svc)
+        return {"llm_mode": provider.mode, "llm_enabled": svc.llm_enabled(),
+                "llm_configured": Provider().mode != "off", "model": provider.model if provider.mode != "off" else None,
                 "disclaimer": DISCLAIMER, "dataset": "Synthetic / seed 42",
                 "verifier": "dayflow-full-period-v1"}
+
+    @app.post("/api/llm")
+    def toggle_llm(payload: LlmToggle, user=Depends(current_user), svc=Depends(service)):
+        return svc.set_llm(payload.enabled, user)
+
+    @app.post("/api/policies/draft-from-prose")
+    def draft_policy(payload: ProseInput, user=Depends(current_user), svc=Depends(service)):
+        reviewer(user)
+        try:
+            result = ai_features.draft_from_prose(provider_for(svc), payload.prose, payload.version)
+        except ValueError as exc:
+            fail(str(exc), 422)
+        with svc.db.transaction() as cx:
+            audit(cx, user["id"], "policy_draft_extracted", payload.version, {
+                "status": result["status"], "mode": provider_for(svc).mode,
+                "flagged": [p["field"] for p in result["provenance"] if p.get("needs_human")],
+            })
+        return result
+
+    @app.post("/api/cards/{identity}/explain")
+    def explain(identity: str, payload: Question, user=Depends(current_user),
+                svc=Depends(service)):
+        detail = svc.detail(identity, user)  # enforces employee scoping
+        result = ai_features.explain_paycheck(provider_for(svc), detail["pay"], payload.question)
+        with svc.db.transaction() as cx:
+            audit(cx, user["id"], "paycheck_explained", identity, {
+                "source": result["source"], "status": result["status"],
+                "mode": result["mode"],
+            })
+        return result
+
+    @app.post("/api/policies/replay")
+    def policy_replay(payload: ReplayInput, user=Depends(current_user), svc=Depends(service)):
+        reviewer(user)
+        with svc.db.connect() as cx:
+            result = ai_features.replay(svc, cx, payload.candidate_id, payload.period_start)
+        if result is None:
+            fail("Candidate policy not found", 404)
+        with svc.db.transaction() as cx:
+            audit(cx, user["id"], "policy_replayed", payload.candidate_id, {
+                "period": result["period_start"], "total_delta": result["total_delta"],
+            })
+        return result
+
+    @app.post("/api/demo/injection")
+    def demo_injection(payload: FreeText, user=Depends(current_user), svc=Depends(service)):
+        reviewer(user)
+        result = ai_features.injection_demo(provider_for(svc), payload.text)
+        with svc.db.transaction() as cx:
+            audit(cx, user["id"], "injection_demo", "demo", {"verdict": result["verdict"]})
+        return result
+
+    @app.post("/api/cards/{identity}/demo/unsafe-fix")
+    def demo_unsafe(identity: str, user=Depends(current_user), svc=Depends(service)):
+        reviewer(user)
+        result = ai_features.unsafe_fix_demo(svc, identity, user)
+        if result is None:
+            fail("This timecard has no complete shift to use for the demo", 422)
+        return result
 
     @app.get("/api/scorecard")
     def scorecard(user=Depends(current_user)):

@@ -92,6 +92,7 @@ export default function App() {
   const [policies, setPolicies] = useState<PolicyResponse | null>(null);
   const [signed, setSigned] = useState(false);
   const [mode, setMode] = useState("off");
+  const [llm, setLlm] = useState({ enabled: true, configured: false });
   const [selected, setSelected] = useState("");
   const [detail, setDetail] = useState<Detail | null>(null);
   const [search, setSearch] = useState("");
@@ -113,10 +114,10 @@ export default function App() {
     let active = true;
     Promise.all([
       api<{ cards: CardRow[]; policy_signed: boolean }>("/cards"),
-      api<PolicyResponse>("/policies"), api<{ llm_mode: string }>("/config"),
+      api<PolicyResponse>("/policies"), api<{ llm_mode: string; llm_enabled: boolean; llm_configured: boolean }>("/config"),
     ]).then(([data, policy, config]) => {
       if (!active) return;
-      setCards(data.cards); setSigned(data.policy_signed); setPolicies(policy); setMode(config.llm_mode);
+      setCards(data.cards); setSigned(data.policy_signed); setPolicies(policy); setMode(config.llm_mode); setLlm({ enabled: config.llm_enabled, configured: config.llm_configured });
       setSelected(old => data.cards.some(c => c.id === old) ? old :
         (data.cards.find(c => c.exceptions.some(e => e.code === "missing_endpoint")) || data.cards[0])?.id || "");
     }).catch(err => { if (active) setNotice({ text: err.message, error: true }); });
@@ -164,6 +165,9 @@ export default function App() {
       <div className="sidebar-bottom">
         <dl className="system-facts">
           <div><dt>Engine</dt><dd>{mode === "off" ? "Deterministic mode" : "AI assistance enabled"}</dd></div>
+          {user.role === "reviewer" && <div><dt>AI assistant</dt><dd><label className="checkbox"><input type="checkbox" role="switch" aria-label="AI assistance" checked={llm.enabled && llm.configured}
+            disabled={!llm.configured || busy} onChange={e => run(() => api("/llm", "POST", { enabled: e.target.checked }), e.target.checked ? "AI assistance on. Every output is still validated." : "AI off. Detection, derivations and verification continue without a model.")} />
+            {llm.configured ? (llm.enabled ? "On" : "Off") : "Not configured"}</label></dd></div>}
           <div><dt>Ruleset</dt><dd className={signed ? "" : "warn"}>{activeVersion || "unsigned"}</dd></div>
         </dl>
         <div className="profile"><span className="avatar">{initials(user.name)}</span><div>{user.name}<small>{friendly(user.role)}</small></div>

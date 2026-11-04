@@ -4,6 +4,7 @@ import {
   api, type AuditEvent, type PolicyDocument, type PolicyResponse, type Scorecard, type User,
 } from "./api";
 import { friendly, type Run } from "./App";
+import { ExtractPanel, ReplayPanel } from "./AiPanels";
 
 export function PolicyStudio({ data, user, run, busy }: {
   data: PolicyResponse | null; user: User; run: Run; busy: boolean;
@@ -42,6 +43,10 @@ export function PolicyStudio({ data, user, run, busy }: {
       <label>Versioned source document<textarea className="figure" spellCheck={false} value={source} onChange={e => setSource(e.target.value)} required /></label>
       <button className="button primary" disabled={busy}>Validate & compile draft</button>
     </form>}
+    {user.role === "reviewer" && <ExtractPanel busy={busy} onLoad={document => {
+      setSource(JSON.stringify(document, null, 2)); setEditing(true);
+    }} />}
+    {user.role === "reviewer" && !active && data?.active_id && <ReplayPanel candidateId={version.id} candidateLabel={version.version} />}
     <div className="policy-columns">
       <section className="rule-mappings">
         <div className="section-heading"><h3>Parameters</h3><span className="figure">{version.mappings.length} values · {Object.keys(version.document.clauses).length} clauses</span></div>

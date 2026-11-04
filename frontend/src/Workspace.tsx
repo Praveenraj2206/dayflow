@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowRight, MessageSquare, Plus, X } from "lucide-react";
 import { api, type Correction, type Detail, type Edit, type Pay, type Proposal, type User } from "./api";
 import { currency, duration, friendly, initials, period, type Run } from "./App";
+import { ExplainChat, InjectionLab, UnsafeFixDemo } from "./AiPanels";
 
 function useModalFocus(active: boolean, close: () => void) {
   const ref = useRef<HTMLElement>(null);
@@ -330,6 +331,7 @@ export default function Workspace({ detail, user, run, page, busy, onPolicy }: {
           <div className={`critic ${investigation.critic.safe ? "" : "flagged"}`}><strong>{investigation.critic.safe ? "Critic: no override detected" : "Critic: instruction override flagged"}</strong><p>{investigation.critic.reason}</p></div>
           <small className="muted">Pattern screening is not a security guarantee. The verifier and approval boundary remain mandatory.</small>
           {investigation.correction && <button className="button secondary" onClick={() => setDraft(investigation.correction)}>Inspect suggested correction</button>}</div>}
+        <InjectionLab />
         <button className="text-button" onClick={() => { setDraft(null); setTab("correction"); }}>Continue with a manual proposal</button>
       </>}
       {tab === "correction" && <>
@@ -340,7 +342,9 @@ export default function Workspace({ detail, user, run, page, busy, onPolicy }: {
           {proposal && <ProposalReview key={proposal.id} proposal={proposal} user={user} run={run} busy={busy} />}
         </> : <div className="empty"><h3>No correction proposed yet</h3><p>Start from the source records. Drafting a proposal never changes the timecard.</p><button className="button primary" onClick={() => setDraft(null)}>Draft the first correction</button></div>}
       </>}
+      {tab === "correction" && reviewer && <UnsafeFixDemo cardId={card.id} run={run} busy={busy} />}
       {tab === "pay" && <>
+        <ExplainChat cardId={card.id} onCite={reviewer ? undefined : id => setDisputeLine(id)} />
         <TraceTable pay={pay} onDispute={!reviewer ? id => setDisputeLine(id) : undefined} />
         {!reviewer && <button className="button secondary" onClick={() => setDisputeLine(null)}>Ask about this timecard</button>}
         <section className="disputes"><div className="section-heading"><h3>Questions and disputes</h3><span className="figure">{detail.disputes.length} recorded</span></div>

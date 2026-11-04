@@ -50,7 +50,7 @@ Exempt bonus/differential/premium inputs, non-exempt comp-off, unsupported salar
 rosters, and salary/rate/type changes inside a workweek require manual review, not
 ignored earnings or guessed conversions. Comp-off is not cashed out. Arbitrary
 legal prose cannot be compiled automatically; unsupported rule types cannot be
-signed as executable rules. Policy replay, schedule optimization, and
+signed as executable rules. Schedule optimization and
 off-the-clock prompting remain deferred. No surveillance data is collected.
 
 ## DF-001 - Calendar, precision, and source records
@@ -536,4 +536,5 @@ and explicit activation before verification or attendance commits are permitted.
 
 Any later policy edit creates a new draft version and invalidates affected pending
 verification. Never change an active signed version in place. Unsupported input
-must produce an explicit manual-review result. Policy replay remains deferred.
+must produce an explicit manual-review result. Policy replay is read-only and
+never changes stored pay.

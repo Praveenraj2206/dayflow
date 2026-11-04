@@ -82,6 +82,20 @@ Do not expose demo accounts on the public internet.
    and zero-unverified-commit measurement. Eval scorecard separates deterministic
    synthetic results from unavailable real-model measurements.
 
+## AI-assisted features (all optional, all validated)
+
+With `DAYFLOW_LLM_MODE=openai` (any OpenAI-compatible endpoint, including a local
+Ollama via `DAYFLOW_LLM_BASE_URL`) a reviewer can switch AI on or off at runtime from
+the sidebar; off behaves exactly like mode `off` and is audited.
+
+| Feature | Where | Guardrail |
+|---|---|---|
+| **AI policy compiler** | Policy studio, *Extract rules from policy text* | Each rule needs a verbatim quote; value must literally appear in it; unclear rules keep the reviewed baseline and are flagged. Draft only; a human compiles and signs. |
+| **Explain my paycheck** | Pay derivation tab | Model wording only. Every number must appear in the engine trace and cited lines must exist, else one retry then a deterministic template built from the trace. |
+| **Policy change replay** | Policy studio, any non-active version | Recomputes the latest period under old and new rulesets with the same engine; per-employee dollar diff. Read-only. |
+| **Injection lab** | AI investigation tab | Free text goes through the pattern critic and, when on, a model critic. Never stored. |
+| **Unsafe fix demo** | Correction & proof tab | Creates a real overlapping proposal that the verifier must reject; never committed. |
+
 ## Architecture and trust boundaries
 
 ```text
@@ -225,7 +239,7 @@ proof-carrying corrections, employee-readable derivations/disputes, and a measur
 fail-closed harness. The proof is reproducible deterministic evidence, **not an
 SMT/formal proof or certification of legal correctness**.
 
-Policy-change replay and all P2 features (solver repair, per-day jurisdiction,
+All P2 features (solver repair, per-day jurisdiction,
 consented off-the-clock prompts) remain explicitly deferred under the agreed scope.
 Taxes, net pay, disbursement, arbitrary statutory policy compilation, and real HRIS
 integration are outside this mock policy.

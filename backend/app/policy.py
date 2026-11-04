@@ -24,10 +24,14 @@ CITATIONS = {
 }
 
 
-def baseline() -> PolicyDocument:
-    source = POLICY_PATH.read_text()
+def parse_clauses(source: str) -> dict[str, str]:
+    """Split policy prose into {clause id: text} using the `## DF-nnn - ` headings."""
     sections = re.split(r"^## (DF-\d{3}) - ", source, flags=re.MULTILINE)
-    clauses = {sections[i]: sections[i + 1].strip() for i in range(1, len(sections), 2)}
+    return {sections[i]: sections[i + 1].strip() for i in range(1, len(sections), 2)}
+
+
+def baseline() -> PolicyDocument:
+    clauses = parse_clauses(POLICY_PATH.read_text())
     return PolicyDocument(version="dayflow-usd-v1", clauses=clauses, rules=Rules())
 
 

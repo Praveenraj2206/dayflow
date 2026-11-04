@@ -21,3 +21,17 @@ coverage/
 
 # Logs
 *.log
+
+# Local application state and reference material
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+*.sqlite3
+*.sqlite3-*
+reference/
+playwright-report/
+test-results/
+artifacts/
+*.tsbuildinfo
